@@ -31,4 +31,4 @@ RUN $POETRY_VENV/bin/pip install flash-attn --no-build-isolation
 
 EXPOSE 8080
 
-CMD gunicorn --bind 0.0.0.0:8080 --workers 1 --timeout 0 app.app:app -k uvicorn.workers.UvicornWorker
+CMD gunicorn --bind 0.0.0.0:8080 --workers 1 --timeout 0 main:app -k uvicorn.workers.UvicornWorker
