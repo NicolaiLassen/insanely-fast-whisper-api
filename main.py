@@ -7,7 +7,7 @@ pipe = pipeline(
     model="distil-whisper/distil-large-v3",
     torch_dtype=torch.float16,
     device="cuda",
-    model_kwargs=({"attn_implementation": "flash_attention_2"}),
+    # model_kwargs=({"attn_implementation": "flash_attention_2"}),
 )
 
 
