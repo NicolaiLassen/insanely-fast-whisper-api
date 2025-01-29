@@ -28,6 +28,7 @@ RUN $POETRY_VENV/bin/pip install -U wheel \
     && $POETRY_VENV/bin/pip install ninja packaging
 
 RUN $POETRY_VENV/bin/pip install flash-attn --no-build-isolation
+RUN $POETRY_VENV/bin/pip install python-multipart
 
 EXPOSE 8080
 
