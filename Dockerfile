@@ -27,4 +27,4 @@ RUN pip3 install --no-cache-dir -r requirements.txt
 EXPOSE $WHISPER_PORT
 
 # Command to run your application
-CMD ["python3", "whisper_server.py"]
+CMD ["python3", "main.py"]
