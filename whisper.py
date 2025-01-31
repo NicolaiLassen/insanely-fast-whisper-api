@@ -3,6 +3,9 @@ from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
 from torch.nn.attention import SDPBackend, sdpa_kernel
 import torch
 import torch._dynamo as dynamo
+
+import logging
+
 dynamo.config.ignore_logger_methods.add("warning_once")
 torch.set_float32_matmul_precision("high")
 
@@ -31,8 +34,11 @@ pipe = pipeline(
     device=device,
 )
 
+generate_kwargs = {"task": "transcribe", "language": "da",
+                   "min_new_tokens": 128, "max_new_tokens": 128}
+
 for _ in tqdm(range(2), desc="Warm-up step"):
     with sdpa_kernel(SDPBackend.MATH):
-        result = pipe("warmup.mp3", return_timestamps=True, chunk_length_s=30, generate_kwargs={
-                      "task": "transcribe", "language": "english", "min_new_tokens": 256, "max_new_tokens": 256})
-        print(result)
+        result = pipe("warmup.mp3", return_timestamps=True, batch_size=1,
+                      chunk_length_s=30, generate_kwargs=generate_kwargs)
+        logging.warning(result)

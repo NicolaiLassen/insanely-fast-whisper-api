@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Body, status, HTTPException, UploadFile, File
 
 from torch.nn.attention import SDPBackend, sdpa_kernel
-from whisper import pipe
+from whisper import pipe, generate_kwargs
 
 
 def create_app() -> FastAPI:
@@ -79,18 +79,9 @@ async def health_check():
 async def transcribe(
     file: UploadFile = File(..., description="Audio file to transcribe."),
     batch_size: int = Body(
-        default=64, description="Batch size for processing."),
-    timestamp: str = Body(default="word", enum=[
-                          "chunk", "word"], description="Timestamp granularity: word-level or chunk-level."),
+        default=2, description="Batch size for processing."),
 ):
     try:
-        generate_kwargs = {
-            "task": "transcribe",
-            "language": "danish",
-            "min_new_tokens": 256,
-            "max_new_tokens": 256
-        }
-
         file_content = await file.read()
 
         with sdpa_kernel(SDPBackend.MATH):
@@ -99,7 +90,7 @@ async def transcribe(
                 chunk_length_s=30,
                 batch_size=batch_size,
                 generate_kwargs=generate_kwargs,
-                return_timestamps="word" if timestamp == "word" else True,
+                return_timestamps=True,
             )
 
         return outputs
