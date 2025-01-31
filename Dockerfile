@@ -1,6 +1,6 @@
 FROM nvcr.io/nvidia/pytorch:24.01-py3
 
-RUN apt-get install -y ffmpeg
+RUN apk add --no-cache build-base ffmpeg
 RUN pip install --upgrade pip
 WORKDIR /app
 
