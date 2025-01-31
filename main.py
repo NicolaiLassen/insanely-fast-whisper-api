@@ -1,14 +1,7 @@
 from fastapi import FastAPI, Body, status, HTTPException, UploadFile, File
-import torch
-from transformers import pipeline
 
-pipe = pipeline(
-    "automatic-speech-recognition",
-    model="distil-whisper/distil-large-v3",
-    torch_dtype=torch.float16,
-    device="cuda",
-    # model_kwargs=({"attn_implementation": "flash_attention_2"}),
-)
+from torch.nn.attention import SDPBackend, sdpa_kernel
+from whisper import pipe
 
 
 def create_app() -> FastAPI:
@@ -85,10 +78,6 @@ async def health_check():
           })
 async def transcribe(
     file: UploadFile = File(..., description="Audio file to transcribe."),
-    task: str = Body(default="transcribe", enum=[
-                     "transcribe", "translate"], description="Task type: transcribe or translate."),
-    language: str = Body(
-        default="None", description="Language of the audio file (default: auto-detect)."),
     batch_size: int = Body(
         default=64, description="Batch size for processing."),
     timestamp: str = Body(default="word", enum=[
@@ -96,19 +85,22 @@ async def transcribe(
 ):
     try:
         generate_kwargs = {
-            "task": task,
-            "language": None if language == "None" else language,
+            "task": "transcribe",
+            "language": "danish",
+            "min_new_tokens": 256,
+            "max_new_tokens": 256
         }
 
         file_content = await file.read()
 
-        outputs = pipe(
-            file_content,
-            chunk_length_s=30,
-            batch_size=batch_size,
-            generate_kwargs=generate_kwargs,
-            return_timestamps="word" if timestamp == "word" else True,
-        )
+        with sdpa_kernel(SDPBackend.MATH):
+            outputs = pipe(
+                file_content,
+                chunk_length_s=30,
+                batch_size=batch_size,
+                generate_kwargs=generate_kwargs,
+                return_timestamps="word" if timestamp == "word" else True,
+            )
 
         return outputs
 
