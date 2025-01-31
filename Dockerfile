@@ -1,19 +1,30 @@
-FROM nvcr.io/nvidia/pytorch:24.01-py3
+# Use Ubuntu as the base image
+FROM ubuntu:latest
 
-RUN apt-get update && apt-get install -y ffmpeg
-RUN pip install --upgrade pip
+# Set environment variables
+ENV WHISPER_HOST=0.0.0.0
+ENV WHISPER_PORT=8080
+
+# Update and install necessary dependencies
+RUN apt-get update && \
+    apt-get install -y ffmpeg python3 python3-pip && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Set the working directory in the container
 WORKDIR /app
 
-# Install dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy the current directory contents into the container at /app
+COPY . /app
 
-# Copy application code
-COPY . .
+# Upgrade pip
+RUN pip3 install --upgrade pip
 
-# Set environment variables and expose port
-ENV PORT=8080
-ENV WORKERS=1
-EXPOSE $PORT
+# Install Whisper package
+RUN pip3 install --no-cache-dir -r requirements.txt
 
-CMD gunicorn --bind 0.0.0.0:$PORT --workers $WORKERS --timeout 0 main:app -k uvicorn.workers.UvicornWorker
+# Expose the port the app runs on
+EXPOSE $WHISPER_PORT
+
+# Command to run your application
+CMD ["python3", "whisper_server.py"]

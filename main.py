@@ -1,99 +1,60 @@
-from fastapi import FastAPI, Body, status, HTTPException, UploadFile, File
+from flask import Flask, request, jsonify
+import whisper
+import werkzeug
+import os
 
-from torch.nn.attention import SDPBackend, sdpa_kernel
-from whisper import pipe, generate_kwargs
+app = Flask(__name__)
 
+# Load the Whisper model
+model = whisper.load_model("tiny")
 
-def create_app() -> FastAPI:
-    api = FastAPI(
-        title="Insanely Fast Whisper API",
-        description='Whisper API',
-        version="0.0.1",
-        docs_url="/swagger",
-        swagger_ui_parameters={"docExpansion": "none"},
-        redoc_url="/redoc",
-    )
-    return api
+@app.route('/whisper', methods=['POST'])
+def transcribe_audio():
+    if 'file' not in request.files:
+        return jsonify({"error": "No file part"}), 400
 
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"error": "No selected file"}), 400
 
-app = create_app()
+    # Optional language parameter from form-data
+    language = request.form.get('language', None)
 
+    if file and werkzeug.utils.secure_filename(file.filename):
+        # Save the uploaded audio file
+        filepath = werkzeug.utils.secure_filename(file.filename)
+        file.save(filepath)
 
-@app.get("",
-         summary="Health Check",
-         description="Health Check to verify that the application is running",
-         status_code=status.HTTP_200_OK,
-         response_description="The application is healthy",
-         responses={
-             status.HTTP_200_OK: {
-                 "content": {
-                     "application/json": {
-                         "example": {"status": "healthy"}
-                     }
-                 }
-             }
-         })
-async def health_check():
-    """
-    Health check endpoint to verify that the application is running.
-    """
-    return {"status": "healthy"}
+        # Load audio and pad/trim it to fit 30 seconds
+        audio = whisper.load_audio(filepath)
+        audio = whisper.pad_or_trim(audio)
 
+        # Make log-Mel spectrogram and move to the same device as the model
+        mel = whisper.log_mel_spectrogram(audio).to(model.device)
 
-@app.post("/",
-          summary="Transcribe Audio",
-          description="Uploads an audio file and transcribes or translates it using the Whisper model.",
-          status_code=status.HTTP_200_OK,
-          response_description="The transcribed or translated text along with timestamps.",
-          responses={
-              status.HTTP_200_OK: {
-                  "content": {
-                      "application/json": {
-                          "example": {
-                              "text": "Hello world!",
-                              "chunks": [
-                                  {"timestamp": [0.0, 1.5], "text": "Hello"},
-                                  {"timestamp": [1.6, 3.0], "text": "world!"}
-                              ]
-                          }
-                      }
-                  }
-              },
-              status.HTTP_400_BAD_REQUEST: {
-                  "description": "Invalid request parameters.",
-                  "content": {
-                      "application/json": {
-                          "example": {"detail": "Invalid file format."}
-                      }
-                  }
-              },
-              status.HTTP_500_INTERNAL_SERVER_ERROR: {
-                  "description": "Internal server error.",
-                  "content": {
-                      "application/json": {
-                          "example": {"detail": "Error processing the audio file."}
-                      }
-                  }
-              }
-          })
-async def transcribe(
-    file: UploadFile = File(..., description="Audio file to transcribe."),
-    batch_size: int = Body(
-        default=2, description="Batch size for processing."),
-):
-    try:
-        file_content = await file.read()
+        # Specify language in DecodingOptions if provided
+        if language:
+            options = whisper.DecodingOptions(language=language, fp16=False)
+            print(f"Transcribing in specified language: {language}")
+        else:
+            # Detect the spoken language if not specified
+            _, probs = model.detect_language(mel)
+            detected_language = max(probs, key=probs.get)
+            options = whisper.DecodingOptions(fp16=False)
+            print(f"Detected language: {detected_language}")
 
-        with sdpa_kernel(SDPBackend.MATH):
-            outputs = pipe(
-                file_content,
-                chunk_length_s=30,
-                batch_size=batch_size,
-                generate_kwargs=generate_kwargs,
-                return_timestamps=True,
-            )
+        result = model.decode(mel, options)
 
-        return outputs
+        # Clean up the audio file
+        os.remove(filepath)
 
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        return jsonify({"text": result.text, "language": language if language else detected_language})
+
+    return jsonify({"error": "Invalid file"}), 400
+
+if __name__ == '__main__':
+    from waitress import serve
+    # Get host and port from environment variables, use default values if not provided
+    host = os.environ.get('WHISPER_HOST', '0.0.0.0')
+    port = int(os.environ.get('WHISPER_PORT', 28466))
+    app.run(host=host, port=port)
